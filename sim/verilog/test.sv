@@ -47,7 +47,7 @@ module gauss_filter_tb;
     
     // Тестовые данные
     reg [15:0] input_data [0:WIDTH*HEIGHT-1];
-    reg [7:0] expected_output [0:WIDTH*HEIGHT-1];
+    reg [7:0] expected_filtered [0:WIDTH*HEIGHT-1];
     integer input_ptr, output_ptr;
     integer errors;
     
@@ -123,9 +123,17 @@ module gauss_filter_tb;
         end
         
         // Объединяем два байта в 16-битное слово
-        input_data[valid_data_count] = {8'h00, byte2};
+        input_data[valid_data_count] = {byte1, byte2};
         valid_data_count++;
         $display("%h, %h", byte1,byte2);
+
+        if (valid_data_count>=WIDTH*HEIGHT)
+        begin
+            
+            $display("Loaded %d elements", valid_data_count);
+            break;
+        end
+
     end
 
 
@@ -194,6 +202,64 @@ module gauss_filter_tb;
 //     end
 //   end
 
+    // task generate_expected_vector;
+    //     integer row, col;
+    //     begin
+    //         for (row = 0; row < HEIGHT; row = row + 1) begin
+    //             for (col = 0; col < WIDTH; col = col + 1) begin
+                                       
+    //                 // Вычисляем ожидаемое значение после фильтра
+    //                 expected_filtered[row][col] = calculate_gauss_filter(row, col);
+                    
+    //                 // Ограничиваем до 255
+    //                 if (expected_filtered[row][col] > 255)
+    //                     expected_filtered[row][col] = 255;
+    //             end
+    //         end
+    //     end
+    // endtask
+
+    // Функция для вычисления разницы с учетом знака
+    function integer calculate_diff;
+        input integer a;
+        input integer b;
+        integer diff;
+        begin
+            diff = a - b;
+            calculate_diff = (diff < 0) ? -diff : diff;
+        end
+    endfunction
+
+    // // Функция для расчета ожидаемого значения после фильтра Гаусса
+    // function [15:0] calculate_gauss_filter;
+    //     input integer row;
+    //     input integer col;
+    //     integer i;
+    //     integer pixel_value;
+    //     integer sum;
+    //     begin
+    //         sum = 0;
+            
+    //         // Коэффициенты фильтра Гаусса 1x5 (Q8.8 формат)
+    //         // [7, 60, 122, 60, 7] / 256
+    //         for (i = -2; i <= 2; i = i + 1) begin
+    //             // Получаем пиксель с зеркалированием
+    //             pixel_value = input_data[row][mirror_index(col + i, WIDTH)];
+                
+    //             // Умножаем на коэффициент
+    //             case (i)
+    //                 -2: sum = sum + pixel_value * 7;
+    //                 -1: sum = sum + pixel_value * 60;
+    //                  0: sum = sum + pixel_value * 122;
+    //                  1: sum = sum + pixel_value * 60;
+    //                  2: sum = sum + pixel_value * 7;
+    //             endcase
+    //         end
+            
+    //         // Делим на 256 (сдвиг на 8 бит)
+    //         calculate_gauss_filter = (sum + 128) >> 8; // Округление
+    //     end
+    // endfunction
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -251,8 +317,9 @@ module gauss_filter_tb;
         reg [7:0] expected_value;
         integer row, col;
         integer idx;
+        integer diff;
         begin
-            $display("Ожидание выходных данных...");
+            $display("Wait output data...");
             
             // Ждем начала вывода
             wait(m_axis_tvalid == 1'b1);
@@ -268,7 +335,7 @@ module gauss_filter_tb;
                     received_value = m_axis_tdata;
                     
                     // Сохраняем для отладки
-                    expected_output[output_ptr] = received_value;
+                    // expected_output[output_ptr] = received_value; // выходные данные в виде файла или формулы
                     
                     // Рассчитываем ожидаемое значение (грубая проверка)
                     idx = output_ptr;
@@ -280,8 +347,9 @@ module gauss_filter_tb;
                     // Проверка
                     if (expected_value !== 8'hXX && received_value !== expected_value) begin
                         // Допускаем небольшую погрешность из-за фильтрации
-                        if ($abs(received_value - expected_value) > 10) begin
-                            $display("Error on picsel [%0d,%0d]: get %0d, wait ~%0d", 
+                        diff = calculate_diff(received_value, expected_value);
+                        if (diff > 10) begin
+                            $display("Error on pixel [%0d,%0d]: get %0d, wait ~%0d", 
                                      row, col, received_value, expected_value);
                             errors = errors + 1;
                         end
@@ -289,7 +357,7 @@ module gauss_filter_tb;
                     
                     // Отладочный вывод
                     if (col == 0 || col == WIDTH-1 || output_ptr % (WIDTH*10) == 0) begin
-                        $display("Picsel [%0d,%0d]: in=%0d, out=%0d", 
+                        $display("Pixel [%0d,%0d]: in=%0d, out=%0d", 
                                  row, col, input_data[idx], received_value);
                     end
                     
@@ -330,17 +398,17 @@ module gauss_filter_tb;
                 
                 // Вывод при изменении состояния
                 if (dut.state !== last_state) begin
-                    $display("Время %0t: Состояние изменилось %0d -> %0d", 
+                    $display("Time %0t: State change %0d -> %0d", 
                              $time, last_state, dut.state);
                     last_state = dut.state;
                 end
                 
                 // Вывод при начале/конце строки
                 if (s_axis_tvalid && s_axis_tlast)
-                    $display("Время %0t: Конец входной строки", $time);
+                    $display("Time %0t: End input row", $time);
                     
                 if (m_axis_tvalid && m_axis_tlast && m_axis_tready)
-                    $display("Время %0t: Конец выходной строки", $time);
+                    $display("Time %0t: End output row", $time);
             end
         end
     endtask
@@ -349,8 +417,8 @@ module gauss_filter_tb;
     task timeout_checker;
         begin
             #5000000; // 5 мс симуляции
-            $display("ТАЙМАУТ: Симуляция слишком долгая!");
-            $display("Обработано пикселей: %0d из %0d", output_ptr, WIDTH*HEIGHT);
+            $display("Timeout: !");
+            $display("Process: %0d from %0d pixel", output_ptr, WIDTH*HEIGHT);
             $finish;
         end
     endtask
