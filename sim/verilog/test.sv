@@ -21,7 +21,7 @@ module gauss_filter_tb;
     integer bytes_read;
     integer file_bin;
 
-    string filename_RAW  = "/home/tmatom/Downloads/test_task_filtr/sim/files/alena_8bit.raw"; //"../files/alena_8bit.raw";
+    string filename_RAW  = "../files/alena_8bit.raw"; //"../files/alena_8bit.raw";
 
     // Параметры
     localparam WIDTH = 640;
@@ -170,8 +170,8 @@ module gauss_filter_tb;
         // Запуск теста
          fork
             send_data_task();
-            // receive_data();
-            // monitor();
+            receive_data_task();
+            timeout_checker();
          join
         
         // Завершение симуляции
@@ -238,13 +238,14 @@ module gauss_filter_tb;
                 repeat(100) @(posedge clk);
             end
             
+            s_axis_tdata = 8'd0;
             s_axis_tvalid = 1'b0;
             s_axis_tlast = 1'b0;
             $display("Sending task is complete!");
         end
     endtask
 
- // Задача для приема данных - ИСПРАВЛЕННАЯ
+ // Задача для приема данных 
     task receive_data_task;
         reg [7:0] received_value;
         reg [7:0] expected_value;
@@ -348,7 +349,7 @@ module gauss_filter_tb;
     task timeout_checker;
         begin
             #5000000; // 5 мс симуляции
-            $display("\n⏰ ТАЙМАУТ: Симуляция слишком долгая!");
+            $display("ТАЙМАУТ: Симуляция слишком долгая!");
             $display("Обработано пикселей: %0d из %0d", output_ptr, WIDTH*HEIGHT);
             $finish;
         end
